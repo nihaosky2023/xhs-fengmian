@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小红书封面工厂 v17.0 (全平台适配版)</title>
+    <style>
+        /* --- 基础布局 --- */
+        body { font-family: 'Microsoft YaHei', sans-serif; background-color: #0f0f0f; color: #ccc; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+
+        /* 左侧边栏 (电脑端) */
+        .sidebar {
+            width: 360px; background: #1a1a1a; padding: 15px; display: flex; flex-direction: column; gap: 12px;
+            border-right: 1px solid #2a2a2a; flex-shrink: 0; box-shadow: 4px 0 15px rgba(0,0,0,0.4); font-size: 13px; user-select: none; overflow-y: auto;
+        }
+
+        /* 画布区域 */
+        .main-area { flex: 1; background: #000; display: flex; justify-content: center; align-items: center; position: relative; background-image: radial-gradient(#222 1px, transparent 1px); background-size: 20px 20px; overflow: hidden; }
+
+        /* --- 移动端适配 (关键修改) --- */
+        @media (max-width: 800px) {
+            body { flex-direction: column; height: 100vh; overflow: hidden; }
+            
+            /* 手机上画布在上面 */
+            .main-area { 
+                flex: 0 0 auto; /* 不伸缩 */
+                height: 55vh; /* 占据上半部分 */
+                border-bottom: 1px solid #333;
+                background-color: #000;
+            }
+            
+            /* 手机上控制台在下面 */
+            .sidebar { 
+                width: 100%; 
+                flex: 1; /* 占据剩余空间 */
+                border-right: none; 
+                padding: 10px;
+                padding-bottom: 50px; /* 防止被底部条遮挡 */
+            }
+
+            /* 调整画布缩放以适应手机屏幕 */
+            #canvas-wrapper {
+                transform: scale(0.8); /* 默认缩小一点适应窄屏 */
+                box-shadow: none;
+            }
+        }
+
+        h3 { color: #ff2442; border-bottom: 1px solid #333; padding-bottom: 6px; margin: 5px 0 10px; font-size: 14px; font-weight: bold; letter-spacing: 1px; display:flex; justify-content:space-between; align-items:center;}
+        .control-group { background: #252525; padding: 12px; border-radius: 8px; border: 1px solid #333; }
+
+        /* 组件样式 */
+        .slider-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .slider-row .label { color: #999; width: 60px; font-size: 12px; }
+        .slider-row .val { color: #ff2442; width: 30px; font-size: 11px; text-align: right; font-family: monospace; }
+        input[type="range"] { flex: 1; accent-color: #ff2442; cursor: pointer; height: 4px; border-radius: 2px; background: #444; margin: 0 8px; }
+        
+        button { border: none; border-radius: 4px; cursor: pointer; transition: 0.2s; font-weight: bold; }
+        .btn-group { display: flex; gap: 8px; margin-bottom: 5px; }
+        .btn-save-local { background: #2e7d32; color: white; flex: 1; padding: 8px; font-size: 12px; }
+        .btn-outline { background: #333; border: 1px solid #444; color: #ccc; flex: 1; padding: 6px; font-size: 11px; }
+        .btn-primary { background: linear-gradient(to right, #ff2442, #ff5e62); color: white; width: 100%; padding: 14px; font-size: 15px; margin-top: auto; letter-spacing: 2px;}
+        .btn-master { width: 100%; background: linear-gradient(135deg, #d4af37, #b8860b); color: #fff; padding: 10px; margin: 10px 0; border-radius: 6px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-add-compact { width: 100%; background: #333; color: #888; border: 1px dashed #555; padding: 6px; margin-top: 5px; font-size: 12px; }
+        .btn-del { background: #b71c1c; color: white; padding: 2px 6px; font-size: 10px; margin-left: auto; border-radius: 2px; }
+        .btn-icon { background: #444; color: #ccc; padding: 4px 6px; font-size: 11px; border-radius: 2px; border: 1px solid #555; }
+        .btn-icon.active { background: #ff2442; color: white; border-color: #ff2442; }
+
+        .list-item { background: #2f2f2f; padding: 8px; border-radius: 4px; border-left: 3px solid #555; margin-bottom: 6px; display: flex; flex-direction: column; gap: 6px; }
+        .list-row { display: flex; align-items: center; gap: 5px; }
+        textarea { width: 100%; background: #1a1a1a; border: 1px solid #444; color: white; padding: 6px; border-radius: 3px; font-size: 12px; resize: vertical; font-family: inherit; min-height: 40px; }
+        .list-item select, .list-item input[type="number"], .list-item input[type="color"] { background: #1a1a1a; border: 1px solid #444; color: white; padding: 4px; border-radius: 3px; font-size: 11px; }
+        .scroll-list { overflow-y: auto; max-height: 180px; padding-right: 5px; }
+
+        #canvas-wrapper {
+            width: 375px; height: 500px; position: relative; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.9);
+            background-color: #000; user-select: none; border: 1px solid #333; flex-shrink: 0;
+        }
+
+        #bg-image { width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; position: absolute; top: 0; left: 0; z-index: 1; }
+        #lighting-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: auto; cursor: grab; }
+        .overlay-img-element { position: absolute; cursor: move; user-select: none; transform-origin: center center; }
+        .overlay-img-element:hover, .text-element:hover { border: 1px dashed rgba(255,255,255,0.5); }
+        .text-element { position: absolute; cursor: move; white-space: pre-wrap; line-height: 1.4; text-shadow: 0 2px 10px rgba(0,0,0,0.9); border: 1px dashed transparent; box-sizing: border-box; padding: 2px; }
+        .resize-handle { position: absolute; right: -6px; top: 0; bottom: 0; width: 20px; cursor: e-resize; display: none; z-index: 999; } /* 加宽手柄方便触摸 */
+        .resize-handle::after { content: ''; position: absolute; left: 8px; top: 10%; bottom: 10%; width: 4px; background: #2196f3; border-radius: 2px; }
+        .text-element:hover .resize-handle { display: block; }
+        #light-cursor { position: absolute; width: 12px; height: 12px; border: 2px solid #ffeb3b; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 9999; display: none; box-shadow: 0 0 10px #ffeb3b; }
+
+        .font-yahei { font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; font-weight: 800; }
+        .font-deng { font-family: 'DengXian', '等线', sans-serif; font-weight: bold; }
+        .font-song { font-family: 'Songti SC', 'SimSun', serif; font-weight: bold; }
+        .font-fangsong { font-family: 'FangSong', 'STFangsong', serif; font-weight: bold; }
+        .font-kaiti { font-family: 'KaiTi', 'STKaiti', serif; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="control-group" style="padding: 10px;">
+            <div class="btn-group">
+                <button class="btn-save-local" onclick="saveToLocal()">💾 存到浏览器</button>
+                <button class="btn-save-local" style="background:#1976d2" onclick="loadFromLocal()">📂 读取上次</button>
+            </div>
+            <div class="btn-group">
+                <button class="btn-outline" onclick="exportTemplateFile()">📤 导出文件</button>
+                <button class="btn-outline" onclick="document.getElementById('importFile').click()">📥 导入文件</button>
+                <input type="file" id="importFile" accept=".json" style="display:none" onchange="importTemplateFile(this)">
+            </div>
+            <div id="msg-box" style="color:#4caf50; font-size:11px; height:15px; margin-top:5px; text-align:center;"></div>
+        </div>
+
+        <div class="control-group">
+            <h3>🖼️ 底图 & 修图</h3>
+            <input type="file" id="imageInput" accept="image/*" style="width:100%; margin-bottom:8px; font-size:11px; background:#111; border:1px solid #444; color:#999; padding:6px;">
+            <button class="btn-master" onclick="applyMasterStyle()"><span>📷</span> 应用“大师摄影”质感</button>
+            <div class="slider-row"><span class="label">亮度</span><input type="range" id="f-brightness" min="0.5" max="1.5" step="0.05" value="1" oninput="updateVal(this)"><span class="val">1.0</span></div>
+            <div class="slider-row"><span class="label">对比度</span><input type="range" id="f-contrast" min="0.5" max="2" step="0.05" value="1.1" oninput="updateVal(this)"><span class="val">1.1</span></div>
+            <div class="slider-row"><span class="label">鲜明度</span><input type="range" id="f-saturate" min="0" max="2" step="0.1" value="1.2" oninput="updateVal(this)"><span class="val">1.2</span></div>
+            <div style="height:1px; background:#333; margin:8px 0;"></div>
+            <div class="slider-row"><span class="label">四周压黑</span><input type="range" id="l-darkness" min="0" max="1" step="0.05" value="0.6" oninput="updateVal(this)"><span class="val">0.6</span></div>
+            <div class="slider-row"><span class="label">光斑范围</span><input type="range" id="l-feather" min="10" max="150" step="5" value="80" oninput="updateVal(this)"><span class="val">80</span></div>
+        </div>
+
+        <div class="control-group">
+            <h3>🎨 贴纸 / Logo</h3>
+            <div id="overlay-list" class="scroll-list" style="max-height: 120px;"></div>
+            <button class="btn-add-compact" onclick="document.getElementById('overlayInput').click()">+ 添加图片</button>
+            <input type="file" id="overlayInput" accept="image/*" style="display:none" onchange="addOverlay(this)">
+        </div>
+
+        <div class="control-group" style="flex:1; display:flex; flex-direction:column; min-height: 150px;">
+            <h3>📝 文案排版</h3>
+            <div id="text-list" class="scroll-list" style="flex:1;"></div>
+            <button class="btn-add-compact" onclick="addText()">+ 添加文字</button>
+        </div>
+
+        <button class="btn-primary" onclick="downloadCover()">✨ 导出高清封面</button>
+    </div>
+
+    <div class="main-area">
+        <div id="canvas-wrapper">
+            <img id="bg-image" src="" alt="请上传底图">
+            <div id="lighting-layer"></div>
+            <div id="light-cursor"></div>
+            <div id="overlay-layer"></div>
+            <div id="text-layer"></div>
+        </div>
+    </div>
+
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <script>
+        let state = { light: { x: 50, y: 50, darkness: 0.6, feather: 80 }, filter: { brightness: 1, contrast: 1.1, saturate: 1.2 }, imgPos: { x: 50, y: 50 }, texts: [{ id: 1, content: "CHENGDU FOOD", font: "font-yahei", size: 48, color: "#ffffff", x: 187, y: 120, width: 300, align: 'center', zIndex: 100, caseType: 'upper' }], overlays: [] };
+        const bgImage = document.getElementById('bg-image');
+        const lightingLayer = document.getElementById('lighting-layer');
+        const overlayLayer = document.getElementById('overlay-layer');
+        const textLayer = document.getElementById('text-layer');
+        const textList = document.getElementById('text-list');
+        
+        function renderAll() { renderFilterAndLight(); renderTextLayer(); renderOverlayLayer(); }
+        window.updateVal = (input) => { input.nextElementSibling.innerText = input.value; if(input.id.startsWith('f-')) state.filter[input.id.split('-')[1]] = input.value; else if(input.id.startsWith('l-')) state.light[input.id.split('-')[1]] = input.value; renderFilterAndLight(); }
+        function syncUISliders() { const map = { 'f-brightness': state.filter.brightness, 'f-contrast': state.filter.contrast, 'f-saturate': state.filter.saturate, 'l-darkness': state.light.darkness, 'l-feather': state.light.feather }; for(let id in map) { const el = document.getElementById(id); if(el) { el.value = map[id]; el.nextElementSibling.innerText = map[id]; } } }
+
+        function renderFilterAndLight() {
+            bgImage.style.filter = `brightness(${state.filter.brightness}) contrast(${state.filter.contrast}) saturate(${state.filter.saturate})`;
+            bgImage.style.objectPosition = `${state.imgPos.x}% ${state.imgPos.y}%`;
+            const { x, y, feather, darkness } = state.light;
+            const stop1 = '25%'; const stop2 = (25 + parseInt(feather)) + '%';
+            lightingLayer.style.background = `radial-gradient(circle at ${x}% ${y}%, rgba(0,0,0,0) 0%, rgba(0,0,0,0) ${stop1}, rgba(0,0,0, ${darkness}) ${stop2})`;
+            const lightCursor = document.getElementById('light-cursor');
+            lightCursor.style.left = (x / 100 * 375) + 'px'; lightCursor.style.top = (y / 100 * 500) + 'px';
+        }
+
+        function renderSidebarList() {
+            textList.innerHTML = '';
+            state.texts.forEach((t, i) => {
+                const item = document.createElement('div'); item.className = 'list-item';
+                item.innerHTML = `<div class="list-row" style="align-items:flex-start"><textarea rows="2" oninput="handleTextInput(${i}, this.value)">${t.content}</textarea><button class="btn-del" onclick="deleteText(${i})">X</button></div><div class="list-row"><select onchange="updateTextStyle(${i}, 'font', this.value)" style="flex:1"><option value="font-yahei" ${t.font==='font-yahei'?'selected':''}>微软雅黑</option><option value="font-deng" ${t.font==='font-deng'?'selected':''}>等线体</option><option value="font-song" ${t.font==='font-song'?'selected':''}>宋体</option><option value="font-fangsong" ${t.font==='font-fangsong'?'selected':''}>仿宋</option><option value="font-kaiti" ${t.font==='font-kaiti'?'selected':''}>楷体</option></select><input type="number" value="${t.size}" style="width:40px" oninput="updateTextStyle(${i}, 'size', this.value)"><input type="color" value="${t.color}" oninput="updateTextStyle(${i}, 'color', this.value)"></div><div class="list-row" style="justify-content: space-between;"><div class="btn-group" style="margin:0"><button class="btn-icon ${t.align==='left'?'active':''}" onclick="updateTextStyle(${i}, 'align', 'left')">左</button><button class="btn-icon ${t.align==='center'?'active':''}" onclick="updateTextStyle(${i}, 'align', 'center')">中</button><button class="btn-icon ${t.align==='right'?'active':''}" onclick="updateTextStyle(${i}, 'align', 'right')">右</button><button class="btn-icon" onclick="cycleCase(${i})">Aa</button></div><div><button class="btn-icon" onclick="changeZIndex('text', ${i}, 10)">⬆️</button><button class="btn-icon" onclick="changeZIndex('text', ${i}, -10)">⬇️</button></div></div>`;
+                textList.appendChild(item);
+            });
+        }
+        window.handleTextInput = (index, value) => { state.texts[index].content = value; renderTextLayer(); };
+        window.updateTextStyle = (index, key, value) => { state.texts[index][key] = value; renderSidebarList(); renderTextLayer(); };
+        window.deleteText = (index) => { state.texts.splice(index, 1); renderSidebarList(); renderTextLayer(); };
+        window.addText = () => { state.texts.push({ content: "New Text", font: "font-yahei", size: 36, color: "#ffffff", x: 187, y: 250, width: 300, align: 'center', zIndex: 100, caseType: 'normal' }); renderSidebarList(); renderTextLayer(); };
+        window.cycleCase = (i) => { const types = ['normal', 'upper', 'lower', 'title']; const current = state.texts[i].caseType || 'normal'; state.texts[i].caseType = types[(types.indexOf(current) + 1) % types.length]; renderTextLayer(); };
+        function transformText(text, type) { if(!text) return ''; if(type === 'upper') return text.toUpperCase(); if(type === 'lower') return text.toLowerCase(); if(type === 'title') return text.replace(/\b\w/g, c => c.toUpperCase()); return text; }
+        window.changeZIndex = (type, index, change) => { if (type === 'text') { state.texts[index].zIndex = (state.texts[index].zIndex || 100) + change; renderTextLayer(); } else { state.overlays[index].zIndex = (state.overlays[index].zIndex || 50) + change; renderOverlayLayer(); } };
+
+        function renderTextLayer() {
+            textLayer.innerHTML = '';
+            state.texts.forEach((t, i) => {
+                const el = document.createElement('div'); el.className = `text-element ${t.font}`; 
+                el.innerText = transformText(t.content, t.caseType); el.style.fontSize = t.size + 'px'; el.style.color = t.color; 
+                el.style.left = t.x + 'px'; el.style.top = t.y + 'px'; el.style.width = t.width + 'px'; el.style.textAlign = t.align;
+                el.style.transform = 'translate(-50%, -50%)'; el.style.zIndex = t.zIndex;
+                el.ondblclick = (e) => { e.stopPropagation(); let newContent = prompt("修改文案:", t.content); if (newContent !== null) { state.texts[i].content = newContent; renderSidebarList(); renderTextLayer(); } };
+                makeDraggable(el, (dx, dy) => { t.x += dx; t.y += dy; el.style.left = t.x + 'px'; el.style.top = t.y + 'px'; });
+                const handle = document.createElement('div'); handle.className = 'resize-handle';
+                // 兼容移动端触摸的宽度调整
+                handle.addEventListener('mousedown', resizeStart); handle.addEventListener('touchstart', resizeStart, {passive: false});
+                function resizeStart(e) {
+                    e.stopPropagation(); e.preventDefault();
+                    let clientX = e.clientX || e.touches[0].clientX;
+                    let startWidth = parseInt(t.width);
+                    const doResize = (moveEvent) => {
+                        let moveX = moveEvent.clientX || moveEvent.touches[0].clientX;
+                        let dx = moveX - clientX;
+                        let newW = startWidth + dx * 2; if(newW < 20) newW = 20; t.width = newW; el.style.width = newW + 'px';
+                    };
+                    const stopResize = () => { document.removeEventListener('mousemove', doResize); document.removeEventListener('touchmove', doResize); document.removeEventListener('mouseup', stopResize); document.removeEventListener('touchend', stopResize); };
+                    document.addEventListener('mousemove', doResize); document.addEventListener('touchmove', doResize, {passive:false});
+                    document.addEventListener('mouseup', stopResize); document.addEventListener('touchend', stopResize);
+                }
+                el.appendChild(handle); textLayer.appendChild(el);
+            });
+        }
+
+        function renderOverlayList() {
+            const list = document.getElementById('overlay-list'); overlayLayer.innerHTML = ''; list.innerHTML = '';
+            state.overlays.forEach((img, i) => {
+                const item = document.createElement('div'); item.className = 'list-item'; item.style.borderLeftColor = '#2196f3';
+                item.innerHTML = `<div class="list-row"><span style="font-size:11px; color:#aaa; width:40px;">贴纸${i+1}</span><button class="btn-icon ${img.flip?'active':''}" onclick="toggleFlip(${i})">🔁</button><button class="btn-del" onclick="state.overlays.splice(${i},1); renderOverlayList()">X</button></div><div class="list-row"><input type="range" min="20" max="300" value="${img.width}" oninput="state.overlays[${i}].width=this.value; renderOverlayList()"></div><div class="list-row"><input type="range" min="-180" max="180" value="${img.rotation}" oninput="state.overlays[${i}].rotation=this.value; renderOverlayList()"></div><div class="list-row" style="justify-content: flex-end;"><button class="btn-icon" onclick="changeZIndex('overlay', ${i}, 10)">⬆️</button><button class="btn-icon" onclick="changeZIndex('overlay', ${i}, -10)">⬇️</button></div>`;
+                list.appendChild(item);
+                const el = document.createElement('img'); el.className = 'overlay-img-element'; el.src = img.src;
+                el.style.width = img.width + 'px'; el.style.left = img.x + 'px'; el.style.top = img.y + 'px';
+                const scaleX = img.flip ? -1 : 1; el.style.transform = `translate(-50%, -50%) rotate(${img.rotation}deg) scaleX(${scaleX})`; el.style.zIndex = img.zIndex;
+                makeDraggable(el, (dx, dy) => { img.x += dx; img.y += dy; el.style.left = img.x + 'px'; el.style.top = img.y + 'px'; });
+                overlayLayer.appendChild(el);
+            });
+        }
+        window.toggleFlip = (i) => { state.overlays[i].flip = !state.overlays[i].flip; renderOverlayList(); };
+        window.addOverlay = (input) => { if (input.files[0]) { const r = new FileReader(); r.onload = (e) => { state.overlays.push({ src: e.target.result, width: 100, rotation: 0, flip: false, x: 187, y: 250, zIndex: 50 }); renderOverlayList(); input.value=''; }; r.readAsDataURL(input.files[0]); } };
+
+        // --- 通用拖拽逻辑 (适配鼠标 & 触摸) ---
+        function makeDraggable(el, cb) {
+            const start = (e) => {
+                e.stopPropagation(); e.preventDefault();
+                // 获取坐标 (兼容 Mouse 和 Touch)
+                let startX = e.clientX || e.touches[0].clientX;
+                let startY = e.clientY || e.touches[0].clientY;
+                
+                const move = (m) => {
+                    let moveX = m.clientX || m.touches[0].clientX;
+                    let moveY = m.clientY || m.touches[0].clientY;
+                    cb(moveX - startX, moveY - startY);
+                    startX = moveX; startY = moveY;
+                };
+                const end = () => {
+                    document.removeEventListener('mousemove', move); document.removeEventListener('touchmove', move);
+                    document.removeEventListener('mouseup', end); document.removeEventListener('touchend', end);
+                };
+                document.addEventListener('mousemove', move); document.addEventListener('touchmove', move, {passive: false});
+                document.addEventListener('mouseup', end); document.addEventListener('touchend', end);
+            };
+            el.addEventListener('mousedown', start); el.addEventListener('touchstart', start, {passive: false});
+        }
+        
+        function applyMasterStyle() { state.filter.brightness = 0.9; state.filter.contrast = 1.35; state.filter.saturate = 1.1; state.light.darkness = 0.75; state.light.feather = 100; syncUISliders(); renderFilterAndLight(); showMessage("📷 已应用大师质感"); }
+
+        // 背景 & 光效拖拽 (适配触摸)
+        const bgStart = (e) => {
+            const wrapper = document.getElementById('canvas-wrapper'); const rect = wrapper.getBoundingClientRect();
+            let clientX = e.clientX || e.touches[0].clientX;
+            let clientY = e.clientY || e.touches[0].clientY;
+            const startImgPos = {...state.imgPos};
+            
+            const move = (m) => {
+                let moveX = m.clientX || m.touches[0].clientX;
+                let moveY = m.clientY || m.touches[0].clientY;
+                
+                if (e.shiftKey) { // 移动光 (手机上无法Shift，暂不支持)
+                    state.light.x = ((moveX - rect.left) / wrapper.offsetWidth) * 100; 
+                    state.light.y = ((moveY - rect.top) / wrapper.offsetHeight) * 100; 
+                    renderFilterAndLight();
+                } else { // 移动图
+                    let dx = moveX - clientX; let dy = moveY - clientY;
+                    state.imgPos.x = startImgPos.x - (dx / wrapper.offsetWidth * 100); 
+                    state.imgPos.y = startImgPos.y - (dy / wrapper.offsetHeight * 100); 
+                    renderFilterAndLight();
+                }
+            };
+            const end = () => { document.removeEventListener('mousemove', move); document.removeEventListener('touchmove', move); document.removeEventListener('mouseup', end); document.removeEventListener('touchend', end); };
+            document.addEventListener('mousemove', move); document.addEventListener('touchmove', move, {passive: false});
+            document.addEventListener('mouseup', end); document.addEventListener('touchend', end);
+        };
+        lightingLayer.addEventListener('mousedown', bgStart); lightingLayer.addEventListener('touchstart', bgStart, {passive: false});
+
+        // 辅助
+        document.addEventListener('keydown', e => { if(e.key==='Shift') { document.getElementById('light-cursor').style.display='block'; lightingLayer.style.cursor='crosshair'; }});
+        document.addEventListener('keyup', e => { if(e.key==='Shift') { document.getElementById('light-cursor').style.display='none'; lightingLayer.style.cursor='grab'; }});
+        document.getElementById('imageInput').addEventListener('change', (e) => { if(e.target.files[0]) { const r = new FileReader(); r.onload = (ev) => { bgImage.src = ev.target.result; state.imgPos = {x:50, y:50}; renderFilterAndLight(); }; r.readAsDataURL(e.target.files[0]); } });
+        window.saveToLocal = () => { try { localStorage.setItem('xhs_cover_v17', JSON.stringify(state)); showMessage("✅ 已保存"); } catch (e) { alert("保存失败"); } };
+        window.loadFromLocal = () => { const data = localStorage.getItem('xhs_cover_v17'); if(data) { state = JSON.parse(data); syncUISliders(); renderSidebarList(); renderAll(); showMessage("📂 读取成功"); } };
+        window.exportTemplateFile = () => { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state)); const link = document.createElement('a'); link.setAttribute("href", dataStr); link.setAttribute("download", "cover_template.json"); document.body.appendChild(link); link.click(); link.remove(); };
+        window.importTemplateFile = (input) => { if(input.files[0]) { const reader = new FileReader(); reader.onload = (e) => { try { state = JSON.parse(e.target.result); syncUISliders(); renderSidebarList(); renderAll(); showMessage("✅ 导入成功"); } catch(err) { alert("文件错误"); } }; reader.readAsText(input.files[0]); } };
+        function showMessage(t) { const el = document.getElementById('msg-box'); el.innerText=t; setTimeout(()=>el.innerText='',3000); }
+
+        // 导出 (带色彩补偿)
+        window.downloadCover = () => {
+            document.getElementById('light-cursor').style.display = 'none';
+            const wrapper = document.getElementById('canvas-wrapper');
+            html2canvas(wrapper, { 
+                scale: 4, useCORS: true, backgroundColor: "#000000",
+                onclone: (d) => { 
+                    const img = d.getElementById('bg-image');
+                    const b = parseFloat(state.filter.brightness);
+                    const c = parseFloat(state.filter.contrast);
+                    const s = parseFloat(state.filter.saturate);
+                    img.style.filter = `brightness(${b*0.98}) contrast(${c*1.12}) saturate(${s*1.18})`; // 补偿算法
+                    d.getElementById('canvas-wrapper').style.backgroundColor = "#000000";
+                } 
+            }).then(canvas => {
+                const link = document.createElement('a'); link.download = `Cover_${Date.now()}.png`; link.href = canvas.toDataURL('image/png', 1.0); link.click();
+            });
+        };
+
+        syncUISliders(); renderSidebarList(); renderAll();
+    </script>
+</body>
+</html>
